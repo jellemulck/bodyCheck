@@ -5,7 +5,7 @@ A simple Go tool that fetches a URL and checks the body for content.
 # Install
 
 ```
-# go get github.com/jellemulck/bodyCheck
+# go get -u github.com/jellemulck/bodyCheck
 ```
 
 # usage example
